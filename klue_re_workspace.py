@@ -7,11 +7,6 @@ Original file is located at
     https://colab.research.google.com/drive/1W6UnM8jTokPtXA693BPTJnObezRXWleR
 """
 
-!pip install datasets
-!pip install scikit-learn
-
-!pip install transformers
-
 import torch
 import torch.nn as nn
 import sklearn.metrics
@@ -28,7 +23,7 @@ dataset = load_dataset('rlatmddus159/ex')
 
 dataset
 
-label_count = {}
+label_count = {"0":0}
 label_list=[]
 label_dict={}
 for data in dataset['train']:
@@ -46,7 +41,7 @@ for i in label_count.items():
 
 label_dict={label:i for i, label in enumerate(label_list)}
 label_dict2={i:label for i, label in enumerate(label_list)}
-label_dict["강화한다"]
+len_label=len(label_dict.keys())
 
 dataset['train'][0]
 
@@ -66,10 +61,33 @@ def read_klue_re(dataset): #텍스트와 엔티티로 subject, object을 만들�
   num_rows=dataset.num_rows
   for i in range(num_rows):
     data=dataset[i]
-    텍스트 = data["text"]
+    텍스트 = data["text"] #"해군 함정중에 충무공이순신급이 있는데 길이가 130m이다"
     관계 = data["relations"]
     엔티티 = data["entities"]
-
+    target_txt = []#["해군", "충무공이순신급", "130m"]
+    target_offset =[]
+    #"해군 함정중에 <s>충무공이순신급</s>이 있는데 길이가 <o>130m</o>이다"
+    
+    for entity in 엔티티:
+        target_txt.append(텍스트[entity['start_offset']:entity['end_offset']]) 
+        target_offset.append([entity['start_offset'], entity['end_offset']])
+    
+    if len(target_txt)>=2:
+        for 인스턴스1_idx, 인스턴스1 in enumerate(target_txt):
+            for 인스턴스2_idx, 인스턴스2 in enumerate(target_txt):
+                if 인스턴스2_idx == 인스턴스1_idx:
+                    continue 
+                elif 인스턴스1 != 인스턴스2:
+                        텍스트1 = 텍스트.replace(인스턴스1, "<subject>" + 인스턴스1 + "</subject>")
+                        텍스트1 = 텍스트1.replace(인스턴스2, "<object>" + 인스턴스2 + "</object>")
+                        sentences.append(텍스트1)
+                        labels.append(label_dict["0"])
+                else:
+                    밀기=len(인스턴스1)
+                    텍스트1=텍스트.replace(텍스트[target_offset[인스턴스1_idx][0]:target_offset[인스턴스1_idx][1]], "<subject>" + 인스턴스1 + "</subject>")
+                    텍스트1=텍스트1.replace(텍스트[target_offset[인스턴스1_idx][0]+밀기:target_offset[인스턴스1_idx][1]+밀기], "<object>" + 인스턴스2 + "</object>")
+        
+                           
     for 관계_item in 관계:
         entity_ids = [관계_item["from_id"], 관계_item["to_id"]]
         target_txt = []
@@ -81,12 +99,15 @@ def read_klue_re(dataset): #텍스트와 엔티티로 subject, object을 만들�
                     end_offset = entity_item["end_offset"]
                     target_txt.append(텍스트[start_offset:end_offset])
 
-        텍스트1 = 텍스트.replace(target_txt[0], "<subject>" + target_txt[0] + "</subject>")
-        텍스트1 = 텍스트1.replace(target_txt[1], "<object>" + target_txt[1] + "</object>")
-
-        sentences.append(텍스트1)
-        labels.append(label_dict[관계_item["type"]])
+        텍스트2 = 텍스트.replace(target_txt[0], "<subject>" + target_txt[0] + "</subject>")
+        텍스트2 = 텍스트2.replace(target_txt[1], "<object>" + target_txt[1] + "</object>")
+        
+        for i_sentence, 전처리 in enumerate(sentences):
+            if 텍스트2==전처리:
+                labels[i_sentence]=label_dict[관계_item["type"]]
+            
   return sentences, labels
+
 
 train_sentences, train_labels=read_klue_re(dataset["train"])
 val_sentences, val_labels=read_klue_re(dataset["test"])
@@ -102,12 +123,12 @@ num_additional_special_tokens = tokenizer.add_special_tokens(entity_special_toke
 batch_size = 8
 
 # For model
-num_labels = 19
+num_labels = 20
 
 # For train
 learning_rate = 1e-5
 weight_decay = 0.0
-epochs = 3
+epochs = 1
 
 class KlueReDataset(torch.utils.data.Dataset):
     def __init__(self, tokenizer, sentences, labels, max_length=128):
@@ -211,8 +232,8 @@ for epoch in range(epochs):
     print(f'train_loss: {train_loss:.4f}, train_acc: {train_acc:.4f}, val_loss: {val_loss:.4f}, val_acc: {val_acc:.4f}')
     print('=' * 100)
 
-tokenizer.save_pretrained('/content/drive/MyDrive/모델만들기/결과물')
-model.save_pretrained('/content/drive/MyDrive/모델만들기/결과물')
+tokenizer.save_pretrained('/content/drive/MyDrive/모델만들기/re_new')
+model.save_pretrained('/content/drive/MyDrive/모델만들기/re_new')
 
 def 변환과정(val_sentence):
   val_encoding = tokenizer(val_sentence,
